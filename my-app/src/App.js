@@ -41,7 +41,7 @@ function App() {
     if (boxes.length === 0) {
       setBoxes([createInitialBox()]);
     }
-  }, []);
+  }, [boxes.length]);
 
   const [connections, setConnections] = useState([]);
   const [selectedText, setSelectedText] = useState("");

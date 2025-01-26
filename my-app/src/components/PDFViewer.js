@@ -15,12 +15,11 @@ const PDFViewer = ({
   connections,
   isSelecting,
   setIsSelecting,
-  onSelectionClear  // Add this prop
+  onSelectionClear
 }) => {
   const [numPages, setNumPages] = useState(null);
   const [pdfFile, setPdfFile] = useState(null);
   const [fileName, setFileName] = useState(''); // Add fileName state
-  const [currentSelection, setCurrentSelection] = useState('');
 
   const onFileChange = (event) => {
     const file = event.target.files[0];
@@ -38,7 +37,6 @@ const PDFViewer = ({
     const selection = window.getSelection();
     const text = selection.toString().trim();
     if (text.length > 1) {
-      setCurrentSelection(text);
       setIsSelecting(true);
       
       const range = selection.getRangeAt(0);
@@ -63,7 +61,6 @@ const PDFViewer = ({
         onTextSelect(text, relativeRect);
       }
     } else {
-      setCurrentSelection('');
       setIsSelecting(false); // Hide button when no selection
       onSelectionClear(); // Call this when selection is cleared
     }
@@ -75,14 +72,13 @@ const PDFViewer = ({
       const selection = window.getSelection();
       const text = selection.toString().trim();
       if (!text) {
-        setCurrentSelection('');
         setIsSelecting(false);
       }
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
     return () => document.removeEventListener('selectionchange', handleSelectionChange);
-  }, []);
+  }, [setIsSelecting]);
 
   React.useEffect(() => {
     const handleGlobalMouseUp = () => {
