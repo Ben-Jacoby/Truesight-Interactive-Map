@@ -55,7 +55,7 @@ function App() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer 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`,
+        Authorization: `Bearer ${process.env.REACT_APP_OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
