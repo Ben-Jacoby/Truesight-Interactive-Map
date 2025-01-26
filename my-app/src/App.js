@@ -7,7 +7,7 @@ function App() {
     {
       id: "box-1",
       content: "This is some sample text. Try selecting me!",
-      position: { x: 50, y: 50 },
+      position: { x: -200, y: 100 },  
     },
   ]);
   const [connections, setConnections] = useState([]);
@@ -17,6 +17,7 @@ function App() {
   const [editingBox, setEditingBox] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [pdfSelection, setPdfSelection] = useState(null);
+  const [isSelecting, setIsSelecting] = useState(false);
   const offset = useRef({ x: 0, y: 0 });
 
   const getSelectedText = () => {
@@ -36,15 +37,19 @@ function App() {
     }
   };
 
-  const handlePDFTextSelect = (text, rect) => {
+  const handlePDFTextSelect = (text, rect, isCurrentlySelecting) => {
     setSelectedText(text);
+    setIsSelecting(isCurrentlySelecting);
     setPdfSelection({
       text,
       position: {
         x: rect.x,
         y: rect.y,
         width: rect.width,
-        height: rect.height
+        height: rect.height,
+        absoluteX: rect.absoluteX,
+        absoluteY: rect.absoluteY,
+        pageNumber: rect.pageNumber
       }
     });
   };
@@ -84,6 +89,32 @@ function App() {
     return { x: 50, y: maxY + offsetY };
   };
 
+  const findAvailableSpaceForBox = (y, width = 220, height = 100) => {
+    // Get both the PDF document and its container
+    const scrollOffset = window.scrollY;
+    
+    // Calculate starting X position right after the PDF viewer
+    // pdfBox.left accounts for the PDF viewer's offset from the left edge
+    let x = -200;
+    const startX = x;
+    
+    // Rest of the function remains the same...
+    const finalY = y - scrollOffset;
+    
+    const boxesAtSameHeight = boxes.filter(box => 
+      Math.abs(box.position.y - finalY) < height
+    ).sort((a, b) => a.position.x - b.position.x);
+
+    for (const box of boxesAtSameHeight) {
+      if (box.position.x > x + width) {
+        break;
+      }
+      x = box.position.x + width + 20;
+    }
+    
+    return { x: startX, y: finalY };
+  };
+
   const handleGenerateClick = async () => {
     if (!selectedText) return;
 
@@ -92,10 +123,17 @@ function App() {
 
     let position;
     if (pdfSelection) {
-      position = {
-        x: pdfSelection.position.x + pdfSelection.position.width + 50,
-        y: pdfSelection.position.y
-      };
+      const pageElement = document.querySelector(`#page_${pdfSelection.position.pageNumber}`);
+      if (pageElement) {
+        const scrollTop = document.querySelector('.pdf-scroll-container')?.scrollTop || 0;
+        const y = pageElement.offsetTop + pdfSelection.position.y - scrollTop;
+        
+        const availableSpace = findAvailableSpaceForBox(y + window.scrollY);
+        position = {
+          x: availableSpace.x,
+          y: availableSpace.y
+        };
+      }
     } else {
       const selectedBox = boxes.find((box) => box.id === activeBox);
       if (!selectedBox) return;
@@ -115,7 +153,13 @@ function App() {
       setConnections(prevConns => [...prevConns, { 
         from: highlightId, 
         to: newBoxId,
-        pdfPosition: pdfSelection.position 
+        pdfPosition: {
+          x: pdfSelection.position.x,
+          y: pdfSelection.position.y,
+          width: pdfSelection.position.width,
+          height: pdfSelection.position.height,
+          pageNumber: pdfSelection.position.pageNumber
+        }
       }]);
     } else if (activeBox) {
       setConnections(prevConns => [...prevConns, { from: activeBox, to: newBoxId }]);
@@ -185,6 +229,12 @@ function App() {
     setDarkMode((prevMode) => !prevMode);
   };
 
+  const handleSelectionClear = () => {
+    setSelectedText("");
+    setActiveBox(null);
+    setPdfSelection(null);
+  };
+
   return (
     <div
       onMouseMove={handleMouseMove}
@@ -197,146 +247,125 @@ function App() {
         color: darkMode ? "#f9f9f9" : "#333",
         display: "flex",
         transition: "background 0.5s, color 0.5s",
+        overflowY: "auto",  // Main scroll for both panels
+        overflowX: "hidden"
       }}
     >
-      <div style={{ width: "50%", height: "100vh", overflowY: "auto", borderRight: "1px solid #ccc" }}>
-        <PDFViewer onTextSelect={handlePDFTextSelect} />
-      </div>
-      
-      <div style={{ width: "50%", height: "100vh", position: "relative" }}>
-        <button
-          onClick={toggleDarkMode}
-          style={{
-            position: "absolute",
-            top: "10px",
-            right: "10px",
-            padding: "8px 12px",
-            background: darkMode ? "#555" : "#007bff",
-            color: "white",
-            border: "none",
-            cursor: "pointer",
-            borderRadius: "8px",
-            fontSize: "14px",
-            boxShadow: "2px 2px 6px rgba(0, 0, 0, 0.15)",
-            transition: "background 0.5s",
-          }}
-        >
-          Toggle Dark Mode
-        </button>
-
-        {boxes.map((box) => (
-          <div
-            key={box.id}
-            id={box.id}
-            style={{
-              position: "absolute",
-              left: box.position.x,
-              top: box.position.y,
-              border: darkMode ? "2px solid #555" : "2px solid #ccc",
-              padding: "12px",
-              width: "220px",
-              backgroundColor: darkMode ? "#444" : "white",
-              cursor: "grab",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              borderRadius: "12px",
-              boxShadow: darkMode ? "4px 4px 10px rgba(0, 0, 0, 0.5)" : "4px 4px 10px rgba(0, 0, 0, 0.1)",
-              transition: "background-color 0.5s, border 0.5s, box-shadow 0.5s",
-            }}
-            onMouseDown={(e) => handleMouseDown(e, box.id)}
-            onDoubleClick={() => handleDoubleClick(box.id)}
-          >
+      <div style={{ 
+        display: "flex",
+        width: "100%",
+        minHeight: "100%",
+        paddingTop: "70px"  // Account for fixed header
+      }}>
+        <div style={{ 
+          flex: "1 1 50%",
+          position: "relative"
+        }}>
+          <PDFViewer 
+            onTextSelect={handlePDFTextSelect} 
+            darkMode={darkMode}
+            onDarkModeToggle={toggleDarkMode}
+            selectedText={selectedText}
+            pdfSelection={pdfSelection}
+            onGenerateClick={handleGenerateClick}
+            connections={connections}  // Add this prop
+            isSelecting={isSelecting}
+            setIsSelecting={setIsSelecting}
+            onSelectionClear={handleSelectionClear}
+          />
+        </div>
+        
+        <div style={{ 
+          width: "50%",
+          minWidth: "600px",
+          position: "relative"
+        }}>
+          {boxes.map((box) => (
             <div
+              key={box.id}
+              id={box.id}
               style={{
-                width: "100%",
-                height: "8px",
+                position: "absolute",
+                left: box.position.x,
+                top: box.position.y,
+                border: darkMode ? "2px solid #555" : "2px solid #ccc",
+                padding: "12px",
+                width: "220px",
+                backgroundColor: darkMode ? "#444" : "white",
                 cursor: "grab",
-                backgroundColor: darkMode ? "#666" : "#ddd",
-                borderRadius: "12px 12px 0 0",
-                transition: "background-color 0.5s",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                borderRadius: "12px",
+                boxShadow: darkMode ? "4px 4px 10px rgba(0, 0, 0, 0.5)" : "4px 4px 10px rgba(0, 0, 0, 0.1)",
+                transition: "background-color 0.5s, border 0.5s, box-shadow 0.5s",
+                zIndex: 10  // Add higher z-index for boxes
               }}
               onMouseDown={(e) => handleMouseDown(e, box.id)}
-            />
-            {editingBox === box.id ? (
-              <textarea
-                autoFocus
-                className="text-content"
-                value={box.content}
-                onChange={(e) => handleEditChange(e, box.id)}
-                onBlur={handleEditBlur}
-                style={{
-                  padding: "8px",
-                  width: "100%",
-                  height: "60px",
-                  border: "none",
-                  outline: "none",
-                  resize: "none",
-                  fontSize: "14px",
-                  borderRadius: "12px",
-                  backgroundColor: darkMode ? "#555" : "white",
-                  color: darkMode ? "#f9f9f9" : "#333",
-                  transition: "background-color 0.5s, color 0.5s",
-                }}
-              />
-            ) : (
+              onDoubleClick={() => handleDoubleClick(box.id)}
+            >
               <div
-                className="text-content"
                 style={{
-                  padding: "8px",
-                  cursor: "text",
-                  userSelect: "text",
                   width: "100%",
+                  height: "8px",
+                  cursor: "grab",
+                  backgroundColor: darkMode ? "#666" : "#ddd",
+                  borderRadius: "12px 12px 0 0",
+                  transition: "background-color 0.5s",
                 }}
-                onMouseUp={() => handleMouseUp(box.id)}
-              >
-                {box.content}
-              </div>
-            )}
-          </div>
-        ))}
+                onMouseDown={(e) => handleMouseDown(e, box.id)}
+              />
+              {editingBox === box.id ? (
+                <textarea
+                  autoFocus
+                  className="text-content"
+                  value={box.content}
+                  onChange={(e) => handleEditChange(e, box.id)}
+                  onBlur={handleEditBlur}
+                  style={{
+                    padding: "8px",
+                    width: "100%",
+                    height: "60px",
+                    border: "none",
+                    outline: "none",
+                    resize: "none",
+                    fontSize: "14px",
+                    borderRadius: "12px",
+                    backgroundColor: darkMode ? "#555" : "white",
+                    color: darkMode ? "#f9f9f9" : "#333",
+                    transition: "background-color 0.5s, color 0.5s",
+                  }}
+                />
+              ) : (
+                <div
+                  className="text-content"
+                  style={{
+                    padding: "8px",
+                    cursor: "text",
+                    userSelect: "text",
+                    width: "100%",
+                  }}
+                  onMouseUp={() => handleMouseUp(box.id)}
+                >
+                  {box.content}
+                </div>
+              )}
+            </div>
+          ))}
 
-        {connections.map((conn, idx) => {
-          if (conn.pdfPosition) {
-            const anchorStyle = {
-              position: 'absolute',
-              left: conn.pdfPosition.x,
-              top: conn.pdfPosition.y,
-              width: conn.pdfPosition.width,
-              height: conn.pdfPosition.height,
-              backgroundColor: 'rgba(255, 255, 0, 0.3)',
-              pointerEvents: 'none'
-            };
-            return (
-              <React.Fragment key={idx}>
-                <div id={conn.from} style={anchorStyle} />
-                <Xarrow start={conn.from} end={conn.to} />
-              </React.Fragment>
-            );
-          }
-          return <Xarrow key={idx} start={conn.from} end={conn.to} />;
-        })}
-
-        {(selectedText || pdfSelection) && (
-          <button
-            onClick={handleGenerateClick}
-            style={{
-              position: "absolute",
-              top: "10px",
-              left: "10px",
-              padding: "8px 12px",
-              background: "#007bff",
-              color: "white",
-              border: "none",
-              cursor: "pointer",
-              borderRadius: "8px",
-              fontSize: "14px",
-              boxShadow: "2px 2px 6px rgba(0, 0, 0, 0.15)",
-            }}
-          >
-            Generate Explanation
-          </button>
-        )}
+          {connections.map((conn, idx) => (
+            <Xarrow 
+              key={idx} 
+              start={conn.from} 
+              end={conn.to}
+              startAnchor="right"
+              endAnchor="left"
+              color="rgba(0, 123, 255, 0.4)"
+              zIndex={5}  // Lower z-index for arrows, but still above PDF
+              strokeWidth={4}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
