@@ -20,6 +20,7 @@ const PDFViewer = ({
   const [numPages, setNumPages] = useState(null);
   const [pdfFile, setPdfFile] = useState(null);
   const [fileName, setFileName] = useState(''); // Add fileName state
+  const [currentSelection, setCurrentSelection] = useState('');
 
   const onFileChange = (event) => {
     const file = event.target.files[0];
@@ -37,6 +38,9 @@ const PDFViewer = ({
     const selection = window.getSelection();
     const text = selection.toString().trim();
     if (text.length > 1) {
+      setCurrentSelection(text);
+      setIsSelecting(true);
+      
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const page = document.querySelector(`#page_${pageNumber}`);
@@ -59,6 +63,7 @@ const PDFViewer = ({
         onTextSelect(text, relativeRect);
       }
     } else {
+      setCurrentSelection('');
       setIsSelecting(false); // Hide button when no selection
       onSelectionClear(); // Call this when selection is cleared
     }
@@ -69,7 +74,10 @@ const PDFViewer = ({
     const handleSelectionChange = () => {
       const selection = window.getSelection();
       const text = selection.toString().trim();
-      setIsSelecting(!!text);
+      if (!text) {
+        setCurrentSelection('');
+        setIsSelecting(false);
+      }
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
@@ -90,6 +98,29 @@ const PDFViewer = ({
     return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
   }, [setIsSelecting, onSelectionClear]);
 
+  // Replace the existing keyboard event useEffect with this updated version
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Enter' && !e.isComposing && !e.shiftKey) {
+        // Get current selection state
+        const selection = window.getSelection();
+        const currentSelectedText = selection.toString().trim();
+        
+        // Check if we have either:
+        // 1. A current PDF text selection, or
+        // 2. A selected box (selectedText) and we're in selecting mode
+        if (currentSelectedText || (selectedText && isSelecting)) {
+          e.preventDefault();
+          e.stopPropagation();
+          onGenerateClick();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [selectedText, isSelecting, onGenerateClick]);
+
   const buttonStyle = {
     padding: "8px 12px",
     background: "#007bff",
@@ -100,7 +131,7 @@ const PDFViewer = ({
     fontSize: "14px",
     boxShadow: "2px 2px 6px rgba(0, 0, 0, 0.15)",
     zIndex: 2,
-    transition: "background 0.3s",
+    transition: "background 0.5s",
     margin: "0 5px"
   };
 
@@ -119,6 +150,7 @@ const PDFViewer = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        transition: "background 0.5s",
         paddingRight: 'calc(50% + 20px)' // Ensure space for right panel
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
@@ -162,7 +194,7 @@ const PDFViewer = ({
               transition: "background 0.5s"
             }}
           >
-            {darkMode ? "Light Mode ☀️" : "Dark Mode 🌙"}
+            {darkMode ? "Dark Mode 🌙" : "Light Mode ☀️"}
           </button>
         </div>
       </div>
